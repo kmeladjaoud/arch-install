@@ -1,0 +1,162 @@
+#!/bin/bash
+setfont Lat2-Terminus16 
+# setfont ter-u20n
+# setfont iso01-12x22.psfu.gz
+
+
+# mkfs.fat -F32 -n EFI /dev/sda1  
+# yes | mkfs.fat -F32 -n EFI /dev/sda1  
+# mkswap -L swap /dev/sda2        
+# yes | mkswap -L swap /dev/sda2
+swapon /dev/sda4
+# mkfs.ext4 -L arch /dev/sda3    
+yes | mkfs.ext4 -F -L arch /dev/sda5
+# mkfs.ext4 -L home /dev/sda4    
+yes | mkfs.ext4 -F -L home /dev/sda6
+mount /dev/sda5 /mnt
+mkdir /mnt/{boot,boot/efi} && mount /dev/sda1 /mnt/boot/efi
+mkdir /mnt/home && mount /dev/sda6 /mnt/home
+
+dhclient -v
+timedatectl set-ntp true
+pacman -Sy --noconfirm reflector
+reflector --verbose --country France --country Germany -l 8 -p https --sort rate --save /etc/pacman.d/mirrorlist
+
+
+pacstrap /mnt base base-devel linux-firmware linux-lts linux-lts-headers dhclient sysfsutils usbutils e2fsprogs inetutils ntfs-3g exfat-utils tlp nano git wget curl zsh less which man-db man-pages texinfo zsh-completions
+
+
+genfstab -U /mnt >> /mnt/etc/fstab
+arch-chroot /mnt <<-EOF
+
+timedatectl set-ntp true
+hwclock --systohc --localtime
+# hwclock --systohc --utc   
+
+reflector --verbose --country France --country Germany -l 12 -p https --sort rate --save /etc/pacman.d/mirrorlist
+
+ln -sf /usr/share/zoneinfo/Europe/Paris /etc/localtime
+hwclock --systohc --localtime
+sed -i 's/#\(fr_FR\.UTF-8\)/\1/' /etc/locale.gen
+locale-gen
+echo "LANG=fr_FR.UTF-8" >> /etc/locale.conf 
+echo "KEYMAP=fr-latin9" >> /etc/vconsole.conf
+echo "FONT=Lat2-Terminus16" >> /etc/vconsole.conf
+echo "arch" >> /etc/hostname
+echo "127.0.0.1   localhost" >> /etc/hosts
+echo "::1         localhost" >> /etc/hosts
+echo "127.0.1.1   arch.localhost arch" >> /etc/hosts
+
+
+pacman -S --noconfirm --needed grub efibootmgr os-prober dosfstools mtools gptfdisk fatresize
+
+mount | grep efivars &> /dev/null || mount -t efivarfs efivarfs /sys/firmware/efi/efivars
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=arch --recheck
+mkdir /boot/efi/EFI/boot
+cp /boot/efi/EFI/arch/grubx64.efi /boot/efi/EFI/boot/bootx64.efi
+echo " " >> /etc/default/grub
+echo "# Uncomment to disable generation of recovery mode menu entries" >> /etc/default/grub
+echo "GRUB_DISABLE_RECOVERY=false" >> /etc/default/grub
+echo " " >> /etc/default/grub
+echo "#New GRUB update disables OS prober by default. We don't want that." >> /etc/default/grub
+echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
+echo " " >> /etc/default/grub
+echo "# Uncomment one of them for the gfx desired, a image background or a gfxtheme" >> /etc/default/grub
+echo '#GRUB_BACKGROUND="/usr/share/grub/background.png' >> /etc/default/grub
+echo 'GRUB_THEME="/usr/share/grub/themes/arch/theme.txt"' >> /etc/default/grub
+git clone https://gitlab.com/1del/arch.git /usr/share/grub/themes/arch
+rm -r /usr/share/grub/themes/arch/.git
+grub-mkconfig -o /boot/grub/grub.cfg
+
+
+
+pacman -S --noconfirm --needed xorg xorg-server networkmanager intel-ucode xf86-video-intel xf86-input-synaptics xf86-input-libinput xf86-input-vmmouse htop gnome-{shell,terminal,tweak-tool,control-center,system-monitor,nettool,disk-utility,music,photos,screenshot,backgrounds,shell-extensions,tweaks,menus,calculator,multi-writer,calendar,clocks,books,contacts,font-viewer,logs,remote-desktop,weather,connections,logs,maps,books,sound-recorder} yelp simple-scan sushi xdg-utils xdg-user-dirs-gtk nautilus gedit gedit-plugins xdg-user-dirs gdm eog eog-plugins file-roller evince totem dconf-editor lollypop gvfs-{afc,goa,google,gphoto2,mtp,nfs,smb} alacarte qt5ct seahorse papirus-icon-theme firefox-i18n-fr libreoffice-still-fr hunspell-fr gimp gimp-help-fr flatpak hardinfo firewalld zsh-autosuggestions zsh-syntax-highlighting zsh-theme-powerlevel10k
+
+
+
+rm -r /etc/skel
+git clone https://gitlab.com/1del/skelgnome.git /etc/skel
+rm -r /etc/skel/.git
+cp -r /etc/skel/./ /root/
+
+git clone https://gitlab.com/1del/wallp.git /tmp/Wallpapers
+rm -r /tmp/Wallpapers/.git
+cp -r /tmp/Wallpapers/*.jpg /usr/share/backgrounds/gnome
+cp -r /tmp/Wallpapers/Wallpapers.xml /usr/share/gnome-background-properties
+
+git clone https://gitlab.com/1del/tela.git /tmp/tela
+rm -r /tmp/tela/.git
+cp -r /tmp/tela/* /usr/share/icons
+
+git clone https://gitlab.com/1del/orchis.git /tmp/orchis
+rm -r /tmp/orchis/.git
+cp -r /tmp/orchis/* /usr/share/themes
+
+git clone https://gitlab.com/1del/adwaita-maia.git /tmp/adwaita-maia
+rm -r /tmp/adwaita-maia/.git
+cp -r /tmp/adwaita-maia/* /usr/share/themes
+
+git clone https://gitlab.com/1del/apps.git /tmp/apps
+cd /tmp/apps
+pacman -U --needed --noconfirm *.zst
+
+git clone https://gitlab.com/1del/plymouth.git /usr/share/plymouth/themes/arch
+
+ln -s /usr/share/zsh/plugins/zsh-syntax-highlighting /usr/share/oh-my-zsh/custom/plugins/
+ln -s /usr/share/zsh/plugins/zsh-autosuggestions /usr/share/oh-my-zsh/custom/plugins/
+ln -s /usr/share/zsh-theme-powerlevel10k /usr/share/oh-my-zsh/custom/themes/powerlevel10k
+
+
+
+echo "# Written by systemd-localed(8), read by systemd-localed and Xorg. It's ">> /etc/X11/xorg.conf.d/00-keyboard.conf
+echo '# probably wise not to edit this file manually. Use localectl(1) to' >> /etc/X11/xorg.conf.d/00-keyboard.conf
+echo '# instruct systemd-localed to update it.' >> /etc/X11/xorg.conf.d/00-keyboard.conf
+echo 'Section "InputClass"' >> /etc/X11/xorg.conf.d/00-keyboard.conf
+echo '        Identifier "system-keyboard"' >> /etc/X11/xorg.conf.d/00-keyboard.conf
+echo '        MatchIsKeyboard "on"' >> /etc/X11/xorg.conf.d/00-keyboard.conf
+echo '        Option "XkbLayout" "fr"' >> /etc/X11/xorg.conf.d/00-keyboard.conf
+echo 'EndSection' >> /etc/X11/xorg.conf.d/00-keyboard.conf
+
+echo root:a | chpasswd
+useradd -m dell -c 'Dell'
+echo dell:a | chpasswd
+usermod -aG wheel dell
+echo "dell ALL=(ALL) ALL" >> /etc/sudoers.d/dell
+
+# chsh -s /bin/sh
+chsh -s /bin/zsh   
+chsh -s $(which zsh)
+
+systemctl enable NetworkManager
+systemctl enable bluetooth
+systemctl enable cups.service
+systemctl enable sshd
+systemctl enable avahi-daemon
+systemctl enable tlp
+systemctl enable reflector.timer
+systemctl enable fstrim.timer
+systemctl enable libvirtd
+systemctl enable firewalld
+systemctl enable acpid
+systemctl enable gdm.service
+
+firewall-cmd --add-port=1025-65535/tcp --permanent
+firewall-cmd --add-port=1025-65535/udp --permanent
+firewall-cmd --reload
+
+# printf "\e[1;32mDone! Type exit, umount -a and reboot.\e[0m"
+
+
+# git clone https://aur.archlinux.org/yay-bin.git && cd yay-bin && makepkg -i && cd - && rm -rf yay-bin
+# git clone https://aur.archlinux.org/oh-my-zsh-git.git
+# cd oh-my-zsh-git
+# less PKGBUILD
+# less oh-my-zsh-git.install
+# less 0001-zshrc.patch
+# makepkg -si
+
+# CONFIG_BLK_DEV_INITRD=Y;
+# CONFIG_MICROCODE=y;
+# CONFIG_MICROCODE_INTEL=Y;
+# CONFIG_MICROCODE_AMD=y;
+# HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt filesystems fsck)
